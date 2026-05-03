@@ -7,6 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## 0.1.0 (2026-05-03)
+
+
+### Bug Fixes
+
+* move dependencies above [project.urls] to fix TOML parse ordering ([ea0d73b](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/ea0d73b3b0a618d4edae6c0b0abc9953974ef273))
+* update contact email to contact@fultonengineeringservices.com ([09edd81](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/09edd81ab1c50eeaaa757fb0ed11425c213aa3fd))
+
 ## [Unreleased]
 
 ## [0.1.0] — 2026-04-29
