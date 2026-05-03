@@ -33,14 +33,14 @@ classifiers = [
     "Typing :: Typed",
 ]
 
+# Core runtime: ReportLab only. matplotlib is optional.
+dependencies = ["reportlab>=4.0,<5.0"]
+
 [project.urls]
 Homepage = "https://github.com/Fulton-Engineering-Services/py-pdf-builder"
 Repository = "https://github.com/Fulton-Engineering-Services/py-pdf-builder"
 Issues = "https://github.com/Fulton-Engineering-Services/py-pdf-builder/issues"
 Changelog = "https://github.com/Fulton-Engineering-Services/py-pdf-builder/blob/main/CHANGELOG.md"
-
-# Core runtime: ReportLab only. matplotlib is optional.
-dependencies = ["reportlab>=4.0,<5.0"]
 
 [project.optional-dependencies]
 # Bar, line, heatmap, Gantt and multi-panel-timeline charts.
