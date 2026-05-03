@@ -1,0 +1,215 @@
+# Copyright 2026 Fulton Engineering Services LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[project]
+name = "fes-pdf-builder"
+version = "0.1.0"
+description = "Branded PDF report toolkit — ReportLab + matplotlib chassis."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Fulton Engineering Services LLC", email = "engineering@fulton.engineering" }]
+keywords = ["pdf", "reportlab", "report", "branding", "charts"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/Fulton-Engineering-Services/py-pdf-builder"
+Repository = "https://github.com/Fulton-Engineering-Services/py-pdf-builder"
+Issues = "https://github.com/Fulton-Engineering-Services/py-pdf-builder/issues"
+Changelog = "https://github.com/Fulton-Engineering-Services/py-pdf-builder/blob/main/CHANGELOG.md"
+
+# Core runtime: ReportLab only. matplotlib is optional.
+dependencies = ["reportlab>=4.0,<5.0"]
+
+[project.optional-dependencies]
+# Bar, line, heatmap, Gantt and multi-panel-timeline charts.
+charts = ["matplotlib>=3.7,<4.0"]
+# Mermaid (needs `dot` on PATH) + sequence diagram + math block renderers.
+diagrams = ["matplotlib>=3.7,<4.0"]
+# All optional renderers.
+all = ["matplotlib>=3.7,<4.0"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0",
+    "mypy>=1.15.0",
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "pre-commit>=4.2.0",
+    "pypdf>=4.0",           # PDF outline / metadata assertions in tests
+    "matplotlib>=3.7,<4.0", # so chart + diagram tests run without [charts] install
+]
+
+# ---------------------------------------------------------------------------
+# Build backend
+# ---------------------------------------------------------------------------
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fes_pdf_builder"]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+include = ["src/**/*.py", "tests/**/*.py", "examples/**/*.py"]
+exclude = [".venv", "dist", "build", "__pycache__"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "PTH",   # flake8-use-pathlib
+    "RUF",   # ruff-specific
+    "ASYNC", # flake8-async
+    "TID",   # flake8-tidy-imports
+    "PL",    # pylint
+    "S",     # flake8-bandit (security)
+]
+ignore = [
+    "S603", "S607",  # subprocess with literal list is safe
+    "PLC0415",       # guarded / lazy imports are intentional
+    "PLR2004",       # magic values acceptable in rendering constants
+    "S101",          # assert in tests
+    "RUF012",        # mutable class attributes (dataclasses)
+    "SIM108",        # ternary can hurt readability in rendering code
+    "TID252",        # relative parent imports are correct inside the package
+    "PLR0913",       # chart/block helpers legitimately have many parameters
+    "PLR0915",       # story builders are intentionally long
+    "PLR0912",       # complex markdown parsers
+    "PLW0603",       # module-level loggers acceptable
+    "S310",          # urllib with known-safe localhost URLs
+    "S311",          # PRNG for non-crypto seeding
+    "RUF002",        # mathematical symbols in docstrings intentional
+    "RUF003",
+    "PLW1510",       # subprocess.run check= handled explicitly
+    "FBT001",        # boolean positional args in internal helpers
+    "FBT002",
+    "RUF001",        # unicode in text.py is intentional notation
+    "S106",          # false-positive on style kwarg names
+    "PLR0911",       # markdown parser has many early returns
+    "S110", "S112",  # try/except/pass intentional in optional-dep guards
+    "B905",          # zip without strict= where lengths are guaranteed equal
+    "PLW0108",       # lambda style pre-existing
+    "N806",          # uppercase constants inside functions (lazy-import pattern)
+    "PLR0124",       # v != v is canonical NaN detection
+    "PLW2901",       # for-loop variable overwrite in multipass formatting
+    "RUF009",        # reportlab Color objects in branding.py are effectively immutable
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fes_pdf_builder"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",  # asserts are fine in tests
+    "S108",  # /tmp paths acceptable in test helpers
+]
+"examples/**" = [
+    "S101",
+    "T201",  # print() is fine in examples
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ---------------------------------------------------------------------------
+# mypy — strict type checking
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+strict = true
+ignore_missing_imports = true
+exclude = []
+
+[[tool.mypy.overrides]]
+# ReportLab and matplotlib have no stubs; their APIs are untyped at call
+# sites in these modules. We completely opt these files out of strict
+# mypy checking rather than scatter dozens of type: ignore comments through
+# otherwise correct code. Logic bugs are caught by the test suite.
+module = [
+    "fes_pdf_builder.flowables",
+    "fes_pdf_builder.page_templates",
+    "fes_pdf_builder.charts",
+    "fes_pdf_builder.diagrams.math",
+    "fes_pdf_builder.diagrams.mermaid",
+    "fes_pdf_builder.diagrams.sequence",
+    "fes_pdf_builder.toc",
+    "fes_pdf_builder.blocks",
+    "fes_pdf_builder.markdown",
+    "fes_pdf_builder.reports.base",
+    "fes_pdf_builder.reports.single_markdown",
+    "fes_pdf_builder.text",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Tests call into untyped ReportLab internals (e.g. .canv, .wrap, .text).
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_any_generics = false
+warn_unused_ignores = false
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=src/fes_pdf_builder",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-fail-under=85",
+    "-v",
+]
+
+[tool.coverage.run]
+source = ["src/fes_pdf_builder"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@overload",
+]
