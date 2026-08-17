@@ -17,6 +17,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `blocks.make_image` — embed a raster image (PNG/JPEG/…) as a ReportLab
+  flowable, preserving aspect ratio and scaling down to fit the frame.
+  Accepts a path, raw `bytes`, or a `BytesIO` buffer.
+- `blocks.make_image_block` — centered, boxed image block with an optional
+  caption row, styled to match the diagram / math blocks.
+- SVG images are detected and rasterized via the optional `svglib`
+  dependency; without it a clear `ValueError` suggests installing `svglib`
+  or rasterizing to PNG/JPEG first.
+
 ## [0.1.0] — 2026-04-29
 
 ### Added

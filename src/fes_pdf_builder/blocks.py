@@ -23,6 +23,10 @@ Public functions:
 * :func:`make_sidebar` — blue-left-bordered "Practical Application" box.
 * :func:`make_code_block` — dark-background code block with optional
   language label.
+* :func:`make_image` — embed a raster image (PNG/JPEG/…) as a ReportLab
+  flowable, scaling to preserve aspect ratio.
+* :func:`make_image_block` — centered, boxed image block with an optional
+  caption row.
 * :func:`make_md_table` — header-row + zebra-striped data table from
   pre-split markdown rows.
 * :func:`make_simple_table` — one-cell-per-cell key/value or comparison
@@ -35,9 +39,15 @@ Public functions:
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from io import BytesIO
+from os import PathLike, fspath
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Image as RLImage
 from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
 from .branding import Layout, Palette, default_layout, default_palette
@@ -48,6 +58,8 @@ __all__ = [
     "VerdictLike",
     "interpretation_box",
     "make_code_block",
+    "make_image",
+    "make_image_block",
     "make_kv_table",
     "make_md_table",
     "make_sidebar",
@@ -639,3 +651,243 @@ def see_also_block(
     for p in pointers:
         items.append(Paragraph(f"&bull; {p}", italic))
     return KeepTogether(items)
+
+
+# ─── Image embedding ──────────────────────────────────────────────────────────
+
+
+def _sniff_svg(image: str | PathLike[str] | bytes | BytesIO) -> bool:
+    """Return ``True`` if ``image`` looks like an SVG document."""
+    if isinstance(image, (str, PathLike)):
+        return Path(fspath(image)).suffix.lower() in (".svg", ".svgz")
+    head = image if isinstance(image, bytes) else _peek(image)
+    stripped = head[:2048].lstrip()
+    return stripped.startswith(b"<svg") or (stripped.startswith(b"<?xml") and b"<svg" in stripped)
+
+
+def _peek(stream: BytesIO) -> bytes:
+    """Read up to 2 KiB from a binary stream without moving its position."""
+    pos = stream.tell()
+    try:
+        return stream.read(2048)
+    finally:
+        stream.seek(pos)
+
+
+def _natural_size_pts(reader: ImageReader, w_px: float, h_px: float) -> tuple[float, float]:
+    """Return an image's natural ``(width, height)`` in points, honouring DPI."""
+    try:
+        dpi_x, dpi_y = reader.getDPI()
+    except Exception:  # pragma: no cover - format-dependent attribute absence
+        dpi_x = dpi_y = 72.0
+    dpi_x = dpi_x or 72.0
+    dpi_y = dpi_y or 72.0
+    return w_px * 72.0 / dpi_x, h_px * 72.0 / dpi_y
+
+
+def _svg_to_png(image: str | PathLike[str] | bytes | BytesIO) -> BytesIO:  # pragma: no cover
+    """Rasterize an SVG to PNG bytes using the optional ``svglib`` dependency.
+
+    This conversion path is only exercised when ``svglib`` is installed; the
+    project's default dependency set does not include it, so the happy path
+    is marked ``no cover`` and the missing-dependency branch is tested
+    instead.
+    """
+    try:
+        from reportlab.graphics import renderPM
+        from svglib.svglib import svg2rlg
+    except ImportError as exc:
+        raise ValueError(
+            "SVG images are not natively supported by ReportLab. Install the "
+            "optional 'svglib' package (pip install svglib) or rasterize the "
+            "image to PNG/JPEG before embedding."
+        ) from exc
+
+    if isinstance(image, bytes):
+        source: str | BytesIO = BytesIO(image)
+    elif isinstance(image, (str, PathLike)):
+        source = fspath(image)
+    else:
+        image.seek(0)
+        source = image
+
+    try:
+        drawing = svg2rlg(source)
+        if drawing is None:
+            raise ValueError("svglib could not parse the SVG document.")
+        buf = BytesIO()
+        renderPM.drawToFile(drawing, buf, fmt="PNG", dpi=150)
+        buf.seek(0)
+        return buf
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"Failed to rasterize SVG: {exc}") from exc
+
+
+def _raster_image(
+    image: str | PathLike[str] | bytes | BytesIO,
+    *,
+    width_pts: float | None,
+    height_pts: float | None,
+    max_width_pts: float | None,
+    max_height_pts: float | None,
+    layout: Layout,
+) -> RLImage:
+    """Render a raster image (PNG/JPEG/…) into a sized ReportLab flowable."""
+    source: str | BytesIO = BytesIO(image) if isinstance(image, bytes) else image
+    if isinstance(source, (str, PathLike)):
+        source = fspath(source)
+    else:
+        source.seek(0)
+
+    reader = ImageReader(source)
+    w_px, h_px = reader.getSize()
+    nat_w, nat_h = _natural_size_pts(reader, float(w_px), float(h_px))
+
+    if width_pts is not None and height_pts is not None:
+        w = float(width_pts)
+        h = float(height_pts)
+    elif width_pts is not None:
+        w = float(width_pts)
+        h = w * h_px / w_px
+    elif height_pts is not None:
+        h = float(height_pts)
+        w = h * w_px / h_px
+    else:
+        w, h = nat_w, nat_h
+
+    max_w = max_width_pts if max_width_pts is not None else layout.frame_width
+    if w > max_w:
+        scale = max_w / w
+        w *= scale
+        h *= scale
+    if max_height_pts is not None and h > max_height_pts:
+        scale = max_height_pts / h
+        w *= scale
+        h *= scale
+
+    if not isinstance(source, str):
+        source.seek(0)
+    return RLImage(source, width=w, height=h)
+
+
+def make_image(
+    image: str | PathLike[str] | bytes | BytesIO,
+    *,
+    width_pts: float | None = None,
+    height_pts: float | None = None,
+    max_width_pts: float | None = None,
+    max_height_pts: float | None = None,
+    layout: Layout | None = None,
+) -> RLImage:
+    """Embed an image (PNG/JPEG/…, or SVG via optional svglib) as a flowable.
+
+    The image's aspect ratio is preserved unless both ``width_pts`` and
+    ``height_pts`` are supplied (which forces an exact size and may distort
+    the image). Pass only one dimension to fix it and derive the other from
+    the image's pixel ratio; pass neither to render at the natural size
+    (honouring any embedded DPI), then scale down — if necessary — to fit
+    ``max_width_pts`` (default: the body frame width).
+
+    Args:
+        image: Image source — a filesystem path (``str`` / ``PathLike``),
+            raw ``bytes``, or a ``BytesIO`` buffer.
+        width_pts: Fixed display width in points (height derived).
+        height_pts: Fixed display height in points (width derived).
+        max_width_pts: Maximum width; over-sized images are scaled down.
+            Defaults to ``layout.frame_width``.
+        max_height_pts: Optional maximum height; over-tall images are
+            scaled down proportionally.
+        layout: Page geometry; defaults to :func:`default_layout`.
+
+    Returns:
+        A :class:`reportlab.platypus.Image` flowable ready to append to a
+        story.
+    """
+    layout = layout or default_layout()
+    if _sniff_svg(image):
+        png = _svg_to_png(image)
+        return _raster_image(  # pragma: no cover — SVG path needs svglib
+            png,
+            width_pts=width_pts,
+            height_pts=height_pts,
+            max_width_pts=max_width_pts,
+            max_height_pts=max_height_pts,
+            layout=layout,
+        )
+    return _raster_image(
+        image,
+        width_pts=width_pts,
+        height_pts=height_pts,
+        max_width_pts=max_width_pts,
+        max_height_pts=max_height_pts,
+        layout=layout,
+    )
+
+
+def make_image_block(
+    image: str | PathLike[str] | bytes | BytesIO,
+    *,
+    caption: str = "",
+    width_pts: float | None = None,
+    height_pts: float | None = None,
+    max_width_pts: float | None = None,
+    max_height_pts: float | None = None,
+    layout: Layout | None = None,
+    palette: Palette | None = None,
+) -> Table:
+    """Centered, boxed image block with an optional caption row.
+
+    Wraps :func:`make_image` in a single-column :class:`Table` so the image
+    is centered in the body frame and — when ``caption`` is given — followed
+    by a small centered caption. The thin slate border matches the diagram
+    and math block styling.
+
+    Args:
+        image: Image source (see :func:`make_image`).
+        caption: Optional plain-text caption rendered beneath the image.
+        width_pts / height_pts / max_width_pts / max_height_pts: Sizing
+            controls forwarded to :func:`make_image`.
+        layout: Page geometry; defaults to :func:`default_layout`.
+        palette: Brand palette; defaults to :func:`default_palette`.
+    """
+    layout = layout or default_layout()
+    palette = palette or default_palette()
+
+    img = make_image(
+        image,
+        width_pts=width_pts,
+        height_pts=height_pts,
+        max_width_pts=max_width_pts,
+        max_height_pts=max_height_pts,
+        layout=layout,
+    )
+    rows: list[list] = [[img]]
+    if caption:
+        caption_style = ParagraphStyle(
+            "figure_caption",
+            fontName="Helvetica-Oblique",
+            fontSize=8.5,
+            leading=11,
+            textColor=palette.slate,
+            alignment=TA_CENTER,
+            spaceBefore=6,
+        )
+        rows.append([Paragraph(esc(caption), caption_style)])
+
+    t = Table(rows, colWidths=[layout.frame_width])
+    t.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("BOX", (0, 0), (-1, -1), 0.5, palette.slate_mid),
+            ]
+        )
+    )
+    return t

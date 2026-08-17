@@ -127,7 +127,7 @@ Each `## Heading` in the markdown file becomes its own chapter, complete with ru
 | `fes_pdf_builder.flowables` | `ChapterAnchor`, `FigureAnchor`, `BookmarkAnchor`, `HeaderState` |
 | `fes_pdf_builder.page_templates` | `PageContext`, `make_page_templates()` |
 | `fes_pdf_builder.text` | `esc()`, `fmt()`, `safe_para()`, `clean_latex()` |
-| `fes_pdf_builder.blocks` | `make_sidebar()`, `make_code_block()`, `make_md_table()`, `make_kv_table()`, `interpretation_box()` |
+| `fes_pdf_builder.blocks` | `make_sidebar()`, `make_code_block()`, `make_md_table()`, `make_kv_table()`, `interpretation_box()`, `make_image()`, `make_image_block()` |
 | `fes_pdf_builder.toc` | `FigureRegistry`, `TocEntry`, `TocPart`, `toc_pages()`, `anchor_key()` |
 | `fes_pdf_builder.markdown` | `parse_section_lines()`, `parse_md_file()`, `split_md_by_h2()`, `MarkdownConfig` |
 | `fes_pdf_builder.charts` | `bar_chart()`, `grouped_bar_chart()`, `line_chart()`, `heatmap()`, `gantt_chart()`, `multi_panel_timeline()` |

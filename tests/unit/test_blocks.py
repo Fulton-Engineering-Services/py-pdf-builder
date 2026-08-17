@@ -16,6 +16,10 @@
 
 from __future__ import annotations
 
+import base64
+from io import BytesIO
+from pathlib import Path
+
 import pytest
 
 from fes_pdf_builder.blocks import (
@@ -23,6 +27,8 @@ from fes_pdf_builder.blocks import (
     VerdictLike,
     interpretation_box,
     make_code_block,
+    make_image,
+    make_image_block,
     make_kv_table,
     make_md_table,
     make_sidebar,
@@ -31,6 +37,17 @@ from fes_pdf_builder.blocks import (
     severity_color_hex,
 )
 from fes_pdf_builder.styles import make_styles
+
+# A deterministic 200×100 RGB PNG (solid red) generated in-memory so image
+# tests need no optional dependency and no on-disk fixture.
+_PNG_200X100 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAIAAABM5OhcAAABG0lEQVR4nO3SUQkAIBTAQOO8/"
+    "imMZQmHIAcXYB9bewauW88L+JKxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIG"
+    "IuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLh"
+    "LFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSB"
+    "iLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4SxSBiLhLFIGIuEsUgYi4S"
+    "xSBiLxAGgInf85ZCwkgAAAABJRU5ErkJggg=="
+)
 
 # ─── Severity helpers ─────────────────────────────────────────────────────────
 
@@ -225,3 +242,96 @@ def test_blocks_importable_without_data_layer() -> None:
 )
 def test_severity_hex_values(sev: str, expected_start: str) -> None:
     assert severity_color_hex(sev).upper().startswith(expected_start.upper())
+
+
+# ─── make_image ───────────────────────────────────────────────────────────────
+#
+# ``make_image`` returns a ``reportlab.platypus.Image``; the dimensions it
+# computed are stored on the flowable's ``_width`` / ``_height`` attributes
+# (``imageWidth`` / ``imageHeight`` hold the *natural* pixel size, not the
+# scaled size, so the assertions below target ``_width`` / ``_height``).
+
+
+def test_make_image_returns_image_flowable_from_bytes() -> None:
+    img = make_image(_PNG_200X100)
+    assert img.__class__.__name__ == "Image"
+
+
+def test_make_image_uses_natural_size_at_72dpi() -> None:
+    # 200×100 px with no embedded DPI → natural size is 200×100 points.
+    img = make_image(_PNG_200X100)
+    assert img._width == pytest.approx(200.0)
+    assert img._height == pytest.approx(100.0)
+
+
+def test_make_image_width_only_preserves_aspect_ratio() -> None:
+    img = make_image(_PNG_200X100, width_pts=100)
+    assert img._width == pytest.approx(100.0)
+    assert img._height == pytest.approx(50.0)
+
+
+def test_make_image_height_only_preserves_aspect_ratio() -> None:
+    img = make_image(_PNG_200X100, height_pts=50)
+    assert img._width == pytest.approx(100.0)
+    assert img._height == pytest.approx(50.0)
+
+
+def test_make_image_explicit_width_and_height_forces_size() -> None:
+    img = make_image(_PNG_200X100, width_pts=300, height_pts=80)
+    assert img._width == pytest.approx(300.0)
+    assert img._height == pytest.approx(80.0)
+
+
+def test_make_image_scales_down_to_max_width() -> None:
+    img = make_image(_PNG_200X100, max_width_pts=50)
+    assert img._width == pytest.approx(50.0)
+    assert img._height == pytest.approx(25.0)
+
+
+def test_make_image_scales_down_to_max_height() -> None:
+    img = make_image(_PNG_200X100, max_height_pts=40)
+    assert img._height == pytest.approx(40.0)
+    assert img._width == pytest.approx(80.0)
+
+
+def test_make_image_accepts_bytesio() -> None:
+    img = make_image(BytesIO(_PNG_200X100), width_pts=120)
+    assert img.__class__.__name__ == "Image"
+    assert img._width == pytest.approx(120.0)
+    assert img._height == pytest.approx(60.0)
+
+
+def test_make_image_accepts_path(tmp_path: Path) -> None:
+    png = tmp_path / "sample.png"
+    png.write_bytes(_PNG_200X100)
+    img = make_image(png, width_pts=120)
+    assert img._width == pytest.approx(120.0)
+    assert img._height == pytest.approx(60.0)
+
+
+def test_make_image_svg_without_svglib_raises_helpful_error(tmp_path: Path) -> None:
+    svg = tmp_path / "plot.svg"
+    svg.write_text(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='100'>"
+        "<rect width='200' height='100' fill='red'/></svg>"
+    )
+    with pytest.raises(ValueError, match=r"svglib|rasterize"):
+        make_image(svg)
+
+
+# ─── make_image_block ─────────────────────────────────────────────────────────
+
+
+def test_make_image_block_returns_table_with_caption() -> None:
+    block = make_image_block(_PNG_200X100, caption="Figure 1 — Sample")
+    assert block.__class__.__name__ == "Table"
+    # Two rows: the image and the caption paragraph.
+    assert len(block._cellvalues) == 2  # type: ignore[attr-defined]
+    caption_cell = block._cellvalues[1][0]  # type: ignore[attr-defined]
+    assert "Sample" in caption_cell.text
+
+
+def test_make_image_block_without_caption_has_single_row() -> None:
+    block = make_image_block(_PNG_200X100)
+    assert block.__class__.__name__ == "Table"
+    assert len(block._cellvalues) == 1  # type: ignore[attr-defined]
