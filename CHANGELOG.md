@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0](https://github.com/Fulton-Engineering-Services/py-pdf-builder/compare/v0.1.0...v0.2.0) (2026-08-17)
+
+
+### Features
+
+* support image embedding in PDF reports ([8aa8eb7](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/8aa8eb782474ae2cfc86ba49752d4e253bd8ff4b))
+
 ## 0.1.0 (2026-05-03)
 
 
