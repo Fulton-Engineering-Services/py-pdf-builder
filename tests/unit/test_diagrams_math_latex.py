@@ -101,6 +101,26 @@ def test_render_inline_math_png_reports_descent_for_descenders() -> None:
     assert descender[3] > no_descender[3]
 
 
+def test_render_inline_math_png_baseline_has_no_phantom_gap() -> None:
+    """Regression: the image canvas must end at the baseline, not below the
+    ink by a font-metric descent (which floated formulas above the text)."""
+    pytest.importorskip("matplotlib")
+    from io import BytesIO
+
+    from PIL import Image
+
+    # A descender-free glyph must have its ink touching the image bottom,
+    # so image-bottom == baseline.
+    result = render_inline_math_png(r"x")
+    assert result is not None
+    png_bytes, _w, _h, descent = result
+    assert descent == pytest.approx(0.0, abs=0.5)
+    im = Image.open(BytesIO(png_bytes)).convert("RGBA")
+    bbox = im.getbbox()
+    assert bbox is not None
+    assert im.height - bbox[3] <= 1  # no phantom whitespace below the ink
+
+
 def test_render_inline_math_png_strips_dollar_wrappers() -> None:
     pytest.importorskip("matplotlib")
     bare = render_inline_math_png(r"x_i")
