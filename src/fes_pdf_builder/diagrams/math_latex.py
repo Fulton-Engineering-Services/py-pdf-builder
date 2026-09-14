@@ -24,8 +24,10 @@ pipeline degrades gracefully: matplotlib mathtext PNG (see
 formula never aborts a build.
 
 Inline equations (``$...$`` / ``\\(...\\)`` spans inside a paragraph) are
-rendered as small transparent PNGs via matplotlib mathtext and embedded as
-base64 data-URI ``<img>`` tags so they flow inside ReportLab paragraphs.
+rendered as small transparent PNGs via matplotlib mathtext, cropped to the
+expression's ink and embedded as base64 data-URI ``<img>`` tags with a
+numeric ``valign`` that baseline-aligns each formula with the surrounding
+text.
 
 Requires the ``[math]`` extra (``pip install fes-pdf-builder[math]``) for
 the vector path; the matplotlib PNG path needs the ``[charts]``/``[diagrams]``
@@ -133,17 +135,26 @@ def render_inline_math_png(
     latex_text: str,
     *,
     fontsize: int = 11,
-) -> tuple[bytes, float, float] | None:
+    dpi: int = 300,
+) -> tuple[bytes, float, float, float] | None:
     """Render an inline LaTeX span as a tight transparent PNG (matplotlib).
+
+    The image is cropped to the expression's ink (plus a 0.72 pt pad), so
+    its width tracks the content instead of being a fixed-width rectangle,
+    and it sits on the text baseline when the caller passes the returned
+    descent to ReportLab as a numeric ``valign``.
 
     Args:
         latex_text: LaTeX math source; ``$...$``, ``\\(...\\)`` and
             ``\\[...\\]`` wrappers are tolerated and stripped.
         fontsize: Base mathtext font size in points (body text is 10 pt).
+        dpi: Output resolution. 300 dpi keeps the raster crisp in print.
 
     Returns:
-        ``(png_bytes, width_pts, height_pts)`` on success, or ``None`` when
-        matplotlib is unavailable or cannot parse the expression.
+        ``(png_bytes, width_pts, height_pts, descent_pts)`` on success, or
+        ``None`` when matplotlib is unavailable or cannot parse the
+        expression. ``descent_pts`` is the distance from the bottom of the
+        image to the math baseline (including the padding).
     """
     raw = latex_text.strip()
     raw = re.sub(r"^\\\[|\\\]$", "", raw).strip()
@@ -159,31 +170,40 @@ def render_inline_math_png(
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        from matplotlib import mathtext
+        from matplotlib.font_manager import FontProperties
     except Exception:
         return None
 
     try:
-        fig, ax = plt.subplots(figsize=(6, 1.2))
-        fig.patch.set_facecolor("none")
-        ax.set_axis_off()
-        ax.patch.set_alpha(0)
-        ax.text(
-            0.5,
-            0.5,
-            expr,
-            fontsize=fontsize,
-            color="#0F172A",
-            ha="center",
-            va="center",
-            transform=ax.transAxes,
+        prop = FontProperties(size=fontsize)
+        # Parse at 72 dpi so the reported metrics are already in points;
+        # ``depth`` is the ink descent below the baseline.
+        _w, _h, depth_pts, _glyphs, _rects = mathtext.MathTextParser("path").parse(
+            expr, dpi=72, prop=prop
         )
+
+        # Figure-level text artist (no axes) so ``bbox_inches="tight"``
+        # crops to the glyphs rather than to a fixed-width axes rectangle.
+        fig = plt.figure(figsize=(0.5, 0.5))
+        fig.patch.set_alpha(0)
+        fig.text(
+            0.0,
+            0.0,
+            expr,
+            fontproperties=prop,
+            color="#0F172A",
+            ha="left",
+            va="bottom",
+        )
+        pad_in = 0.01
         buf = BytesIO()
         fig.savefig(
             buf,
             format="png",
-            dpi=150,
+            dpi=dpi,
             bbox_inches="tight",
-            pad_inches=0.01,
+            pad_inches=pad_in,
             transparent=True,
         )
         plt.close(fig)
@@ -191,10 +211,11 @@ def render_inline_math_png(
 
         ir = ImageReader(buf)
         w_px, h_px = ir.getSize()
-        w_pts = w_px * 72.0 / 150
-        h_pts = h_px * 72.0 / 150
+        w_pts = w_px * 72.0 / dpi
+        h_pts = h_px * 72.0 / dpi
         buf.seek(0)
-        return buf.getvalue(), w_pts, h_pts
+        descent_pts = depth_pts + pad_in * 72.0
+        return buf.getvalue(), w_pts, h_pts, descent_pts
 
     except Exception:
         try:
@@ -209,6 +230,11 @@ def render_inline_math_png(
 def make_inline_math_img(latex_text: str, *, fontsize: int = 11) -> str | None:
     """Render an inline math span to a base64 data-URI ``<img>`` tag.
 
+    The tag uses a negative numeric ``valign`` equal to the expression's
+    descent, which ReportLab interprets as the image-bottom offset below
+    the text baseline — giving per-expression baseline alignment without
+    the fixed-width/centred look of a ``valign="middle"`` image.
+
     Returns ``None`` when the expression cannot be rendered, so callers can
     fall back to the Unicode-approximation path
     (:func:`fes_pdf_builder.text.format_inline_math`).
@@ -216,10 +242,12 @@ def make_inline_math_img(latex_text: str, *, fontsize: int = 11) -> str | None:
     result = render_inline_math_png(latex_text, fontsize=fontsize)
     if result is None:
         return None
-    png_bytes, w_pts, h_pts = result
+    png_bytes, w_pts, h_pts, descent_pts = result
     b64 = base64.b64encode(png_bytes).decode("ascii")
     uri = f"data:image/png;base64,{b64}"
-    return f'<img src="{uri}" width="{w_pts:.2f}" height="{h_pts:.2f}" valign="middle"/>'
+    return (
+        f'<img src="{uri}" width="{w_pts:.2f}" height="{h_pts:.2f}" valign="-{descent_pts:.2f}"/>'
+    )
 
 
 def make_math_block_latex(

@@ -71,14 +71,34 @@ def test_render_latex_drawing_returns_none_for_unparseable() -> None:
     assert render_latex_drawing(r"\frac") is None
 
 
-def test_render_inline_math_png_returns_bytes_and_size() -> None:
+def test_render_inline_math_png_returns_bytes_size_and_descent() -> None:
     pytest.importorskip("matplotlib")
     result = render_inline_math_png(r"\hat{c}^{2}")
     assert result is not None
-    png_bytes, w_pts, h_pts = result
+    png_bytes, w_pts, h_pts, descent_pts = result
     assert png_bytes.startswith(b"\x89PNG")
     assert w_pts > 0
     assert h_pts > 0
+    assert descent_pts >= 0
+
+
+def test_render_inline_math_png_returns_variable_width() -> None:
+    """Regression: the image must crop to the expression, not a fixed box."""
+    pytest.importorskip("matplotlib")
+    short = render_inline_math_png(r"x")
+    long = render_inline_math_png(r"|r| \leq 0.09")
+    assert short is not None and long is not None
+    assert short[1] < long[1]
+    # A single glyph must be a small image, not a fraction of a page.
+    assert short[1] < 40
+
+
+def test_render_inline_math_png_reports_descent_for_descenders() -> None:
+    pytest.importorskip("matplotlib")
+    no_descender = render_inline_math_png(r"x")
+    descender = render_inline_math_png(r"y_{ij}")
+    assert no_descender is not None and descender is not None
+    assert descender[3] > no_descender[3]
 
 
 def test_render_inline_math_png_strips_dollar_wrappers() -> None:
@@ -101,7 +121,8 @@ def test_make_inline_math_img_returns_data_uri_tag() -> None:
     tag = make_inline_math_img(r"p_\theta(x_i)")
     assert tag is not None
     assert tag.startswith('<img src="data:image/png;base64,')
-    assert 'valign="middle"' in tag
+    assert 'valign="-' in tag
+    assert 'valign="middle"' not in tag
     assert 'width="' in tag and 'height="' in tag
 
 
