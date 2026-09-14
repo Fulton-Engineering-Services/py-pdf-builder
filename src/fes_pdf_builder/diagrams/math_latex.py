@@ -134,7 +134,7 @@ def render_latex_drawing(
 def render_inline_math_png(
     latex_text: str,
     *,
-    fontsize: int = 11,
+    fontsize: int = 10,
     dpi: int = 300,
 ) -> tuple[bytes, float, float, float] | None:
     """Render an inline LaTeX span as a tight transparent PNG (matplotlib).
@@ -147,7 +147,7 @@ def render_inline_math_png(
     Args:
         latex_text: LaTeX math source; ``$...$``, ``\\(...\\)`` and
             ``\\[...\\]`` wrappers are tolerated and stripped.
-        fontsize: Base mathtext font size in points (body text is 10 pt).
+        fontsize: Base mathtext font size in points; defaults to the 10 pt body size.
         dpi: Output resolution. 300 dpi keeps the raster crisp in print.
 
     Returns:
@@ -227,7 +227,7 @@ def render_inline_math_png(
         return None
 
 
-def make_inline_math_img(latex_text: str, *, fontsize: int = 11) -> str | None:
+def make_inline_math_img(latex_text: str, *, fontsize: int = 10) -> str | None:
     """Render an inline math span to a base64 data-URI ``<img>`` tag.
 
     The tag uses a negative numeric ``valign`` equal to the expression's
