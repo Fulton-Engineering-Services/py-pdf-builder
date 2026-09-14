@@ -7,6 +7,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.0](https://github.com/Fulton-Engineering-Services/py-pdf-builder/compare/v0.2.0...v0.3.0) (2026-09-14)
+
+
+### Features
+
+* support high-fidelity LaTeX math rendering ([b7c0f28](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/b7c0f28ea543e2008f7b73335c4091f4144bad2b))
+
+
+### Bug Fixes
+
+* build inline math images to the mathtext layout box ([274e3cd](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/274e3cda8f156fba8fcc944f89d4f184c4321542))
+* crop inline math images to the expression for baseline alignment ([7969790](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/7969790a93efad5ad94e7e8d705db94ee65278d2))
+* match inline math default to the 10 pt body size ([cc2b628](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/cc2b628bfec71d03f0aa03d44f06943eb4f1ba5a))
+* require svglib&gt;=2.2 so the math extra stays cairo-free ([4bbd959](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/4bbd959297919accab9f7d0b94d8453e9988dda1))
+
 ## [0.2.0](https://github.com/Fulton-Engineering-Services/py-pdf-builder/compare/v0.1.0...v0.2.0) (2026-08-17)
 
 
