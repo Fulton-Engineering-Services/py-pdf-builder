@@ -67,6 +67,13 @@ class SingleMdConfig:
         cover_footer_line: Optional text appended after the date on the
             cover (e.g. ``"Confidential — Internal Use"``). Empty string
             suppresses the extra text.
+        math_mode: ``"legacy"`` (default) or ``"latex"``. Legacy renders
+            ``\\[...\\]`` display blocks via matplotlib mathtext PNG and
+            approximates ``\\(...\\)`` inline spans with Unicode glyphs.
+            Latex mode renders display equations as vector graphics via
+            ziamath (requires the ``[math]`` extra) and renders
+            ``$...$``/``$$...$$``/``\\(...\\)`` inline spans as small
+            images, with graceful per-formula fallbacks in both cases.
         palette: Brand palette override.
         layout: Page geometry override.
     """
@@ -82,6 +89,7 @@ class SingleMdConfig:
     subtitle_lines: list[str]
     reference_date: date_cls | None = None
     cover_footer_line: str = ""
+    math_mode: str = "legacy"
     palette: Palette | None = None
     layout: Layout | None = None
 
@@ -123,8 +131,15 @@ def build_single_markdown_pdf(cfg: SingleMdConfig) -> Path:
                 layout=lo,
             )
 
-        def math_renderer(text: str, _styles: dict) -> object:
-            return make_math_block(text, _styles, layout=lo, palette=p)
+        if cfg.math_mode == "latex":
+            from ..diagrams.math_latex import make_math_block_latex
+
+            def math_renderer(text: str, _styles: dict) -> object:
+                return make_math_block_latex(text, _styles, layout=lo, palette=p)
+        else:
+
+            def math_renderer(text: str, _styles: dict) -> object:
+                return make_math_block(text, _styles, layout=lo, palette=p)
 
         # ── Pass 1: parse all chapter bodies ─────────────────────────────
         # Done BEFORE assembling the TOC so the FigureRegistry is fully
@@ -157,6 +172,7 @@ def build_single_markdown_pdf(cfg: SingleMdConfig) -> Path:
                     math_renderer=math_renderer,
                     palette=p,
                     chapter_anchor=ch_anchor,
+                    math_mode=cfg.math_mode,
                 )
             )
             chapter_blocks.append(block)
@@ -193,6 +209,7 @@ def build_single_markdown_pdf(cfg: SingleMdConfig) -> Path:
                     math_renderer=math_renderer,
                     palette=p,
                     chapter_anchor=preface_anchor,
+                    math_mode=cfg.math_mode,
                 )
             )
             story.append(Spacer(1, 10))

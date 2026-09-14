@@ -47,8 +47,11 @@ Changelog = "https://github.com/Fulton-Engineering-Services/py-pdf-builder/blob/
 charts = ["matplotlib>=3.7,<4.0"]
 # Mermaid (needs `dot` on PATH) + sequence diagram + math block renderers.
 diagrams = ["matplotlib>=3.7,<4.0"]
+# High-fidelity LaTeX math: ziamath vector display equations (svglib embeds
+# them in the PDF); inline math stays on matplotlib mathtext rasters.
+math = ["ziamath>=0.13,<1.0", "svglib>=1.5,<2.0"]
 # All optional renderers.
-all = ["matplotlib>=3.7,<4.0"]
+all = ["matplotlib>=3.7,<4.0", "ziamath>=0.13,<1.0", "svglib>=1.5,<2.0"]
 
 [dependency-groups]
 dev = [
@@ -59,6 +62,8 @@ dev = [
     "pre-commit>=4.2.0",
     "pypdf>=4.0",           # PDF outline / metadata assertions in tests
     "matplotlib>=3.7,<4.0", # so chart + diagram tests run without [charts] install
+    "ziamath>=0.13,<1.0",   # so math tests run without [math] install
+    "svglib>=1.5,<2.0",
 ]
 
 # ---------------------------------------------------------------------------
@@ -169,6 +174,7 @@ module = [
     "fes_pdf_builder.page_templates",
     "fes_pdf_builder.charts",
     "fes_pdf_builder.diagrams.math",
+    "fes_pdf_builder.diagrams.math_latex",
     "fes_pdf_builder.diagrams.mermaid",
     "fes_pdf_builder.diagrams.sequence",
     "fes_pdf_builder.toc",

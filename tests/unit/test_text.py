@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from fes_pdf_builder.styles import make_styles
 from fes_pdf_builder.text import clean_latex, esc, fmt, format_inline_math, safe_para
 
@@ -131,3 +133,36 @@ def test_fmt_bare_url_uses_link_color() -> None:
     """Bare ``<https://...>`` URLs honour the ``link_color`` override."""
     out = fmt("<https://example.com>", link_color="#AABBCC")
     assert "#AABBCC" in out
+
+
+def test_fmt_latex_mode_renders_dollar_math_as_image() -> None:
+    pytest.importorskip("matplotlib")
+    out = fmt(r"variance scales as $\hat{c}^{2}$ per month.", math_mode="latex")
+    assert "data:image/png;base64," in out
+    assert 'valign="middle"' in out
+
+
+def test_fmt_latex_mode_keeps_money_prose() -> None:
+    out = fmt("costs $5 and $10 for the licence.", math_mode="latex")
+    assert "data:image/png;base64," not in out
+    assert "$5" in out
+
+
+def test_fmt_latex_mode_protects_code_spans_from_math() -> None:
+    out = fmt(r"`v$W^coef(x)[1]` and \(x_i\)", math_mode="latex")
+    assert "Courier" in out
+    assert "v$W^coef(x)[1]" in out
+
+
+def test_fmt_latex_mode_falls_back_per_span(monkeypatch: pytest.MonkeyPatch) -> None:
+    import fes_pdf_builder.diagrams.math_latex as ml
+
+    monkeypatch.setattr(ml, "make_inline_math_img", lambda *a, **kw: None)
+    out = fmt(r"\(p_\theta(x_i)\) tied.", math_mode="latex")
+    # Falls back to the legacy Unicode approximation
+    assert "<sub>" in out
+
+
+def test_fmt_legacy_mode_ignores_dollar_math() -> None:
+    out = fmt(r"variance scales as $\hat{c}^{2}$ per month.")
+    assert "data:image/png;base64," not in out

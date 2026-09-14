@@ -148,6 +148,11 @@ _TABLE_ROW = re.compile(r"^\|(.+)\|$")
 _TABLE_SEP = re.compile(r"^\|[\s\-:|]+\|$")
 _MATH_OPEN = re.compile(r"^\\\[$")
 _MATH_CLOSE = re.compile(r"^\\\]$")
+_MATH_CLOSE_DOLLAR = re.compile(r"^\$\$$")
+# Latex-mode display-math openers: a line starting with ``\[`` or ``$$``
+# opens a display block. Single-line forms (``\[ x \]``, ``$$ x $$``) are
+# recognised too, so a one-line equation never swallows the lines after it.
+_MATH_DISPLAY_OPEN = re.compile(r"^(\\\[|\$\$)\s*(.*)$")
 
 
 # ─── Section parser ──────────────────────────────────────────────────────────
@@ -165,6 +170,7 @@ def parse_section_lines(
     palette: Palette | None = None,
     chapter_anchor: str = "",
     link_resolver: Callable[[str], str | None] | None = None,
+    math_mode: str = "legacy",
 ) -> list:
     """Parse a list of markdown source lines into a list of flowables.
 
@@ -187,7 +193,9 @@ def parse_section_lines(
             ``Figure N \u00b7 Type \u00b7 <heading>``.
         math_renderer: Optional callable
             ``(latex_text, styles) -> Flowable``. Use
-            :func:`reporting.diagrams.math.make_math_block` here.
+            :func:`reporting.diagrams.math.make_math_block` (legacy) or
+            :func:`reporting.diagrams.math_latex.make_math_block_latex`
+            (latex mode) here.
         palette: Brand palette (only used by the HR rule colour).
         chapter_anchor: PDF anchor key of the surrounding chapter
             (e.g. ``"kv_cache"``). When non-empty (and not in sidebar
@@ -201,8 +209,14 @@ def parse_section_lines(
             ``[text](#fragment)`` markdown links into clickable
             internal PDF anchors. See :func:`reporting.text.fmt` for
             the contract.
+        math_mode: ``"legacy"`` (default) or ``"latex"``. Latex mode
+            enables ``$$...$$`` display blocks, recognises single-line
+            ``\\[ ... \\]`` / ``$$ ... $$`` equations, keeps fenced code
+            protected from math detection, and passes ``math_mode``
+            through to every inline-:func:`fmt` call.
     """
     palette = palette or default_palette()
+    latex_mode = math_mode == "latex"
     flowables: list = []
     para_lines: list[str] = []
     bullet_items: list[tuple[int, str]] = []
@@ -236,7 +250,9 @@ def parse_section_lines(
             text = " ".join(para_lines).strip()
             if text:
                 st = styles["sidebar_body"] if is_sidebar else styles["body"]
-                flowables.append(safe_para(fmt(text, link_resolver=link_resolver), st))
+                flowables.append(
+                    safe_para(fmt(text, link_resolver=link_resolver, math_mode=math_mode), st)
+                )
             para_lines.clear()
 
     def flush_bullets() -> None:
@@ -251,7 +267,7 @@ def parse_section_lines(
                     st = styles["bullet"]
                 flowables.append(
                     safe_para(
-                        f"{marker}  {fmt(btext, link_resolver=link_resolver)}",
+                        f"{marker}  {fmt(btext, link_resolver=link_resolver, math_mode=math_mode)}",
                         st,
                     )
                 )
@@ -286,7 +302,7 @@ def parse_section_lines(
                 emit_heading_anchor(m.group(1))
                 flowables.append(
                     safe_para(
-                        fmt(m.group(1), link_resolver=link_resolver),
+                        fmt(m.group(1), link_resolver=link_resolver, math_mode=math_mode),
                         styles["h2"],
                     )
                 )
@@ -301,7 +317,7 @@ def parse_section_lines(
                 emit_heading_anchor(m.group(1))
                 flowables.append(
                     safe_para(
-                        fmt(m.group(1), link_resolver=link_resolver),
+                        fmt(m.group(1), link_resolver=link_resolver, math_mode=math_mode),
                         styles["h3"],
                     )
                 )
@@ -316,7 +332,7 @@ def parse_section_lines(
                 emit_heading_anchor(m.group(1))
                 flowables.append(
                     safe_para(
-                        fmt(m.group(1), link_resolver=link_resolver),
+                        fmt(m.group(1), link_resolver=link_resolver, math_mode=math_mode),
                         styles["h4"],
                     )
                 )
@@ -324,13 +340,50 @@ def parse_section_lines(
             i += 1
             continue
 
-        # Math display block \[ ... \]
-        if _MATH_OPEN.match(line):
+        # Math display block \[ ... \]  (and $$ ... $$ in latex mode)
+        latex_open = _MATH_DISPLAY_OPEN.match(line) if latex_mode else None
+        legacy_open = _MATH_OPEN.match(line) if not latex_mode else None
+        if legacy_open:
+            # Legacy behaviour, preserved exactly: a line that is exactly
+            # ``\[`` opens a block; everything until a line that is exactly
+            # ``\]`` becomes the formula.
             flush_para()
             flush_bullets()
             math_lines: list[str] = []
             i += 1
             while i < n and not _MATH_CLOSE.match(lines[i].rstrip()):
+                math_lines.append(lines[i])
+                i += 1
+            if not is_sidebar and math_renderer is not None:
+                flowables.append(math_renderer("\n".join(math_lines), styles))
+            i += 1
+            continue
+        if latex_open:
+            open_delim = latex_open.group(1)
+            rest = latex_open.group(2).strip()
+            if open_delim.startswith("\\"):
+                close_re = _MATH_CLOSE
+                closer = "\\]"
+            else:
+                close_re = _MATH_CLOSE_DOLLAR
+                closer = "$$"
+
+            # Single-line form: $$ x $$ or \[ x \]
+            single = ""
+            if rest.endswith(closer) and rest[: -len(closer)].strip():
+                single = rest[: -len(closer)].strip()
+
+            flush_para()
+            flush_bullets()
+            if single:
+                if not is_sidebar and math_renderer is not None:
+                    flowables.append(math_renderer(single, styles))
+                i += 1
+                continue
+
+            math_lines = [rest] if rest else []
+            i += 1
+            while i < n and not close_re.match(lines[i].rstrip()):
                 math_lines.append(lines[i])
                 i += 1
             if not is_sidebar and math_renderer is not None:
@@ -449,6 +502,7 @@ def parse_md_file(
     math_renderer: Callable[[str, dict], object] | None = None,
     palette: Palette | None = None,
     link_resolver: Callable[[str], str | None] | None = None,
+    math_mode: str = "legacy",
 ) -> list:
     """Parse a full markdown file into a chapter's worth of flowables.
 
@@ -538,7 +592,7 @@ def parse_md_file(
     if lead_text.strip():
         flowables.append(
             Paragraph(
-                fmt(lead_text, link_resolver=link_resolver),
+                fmt(lead_text, link_resolver=link_resolver, math_mode=math_mode),
                 styles["chap_lead"],
             )
         )
@@ -555,6 +609,7 @@ def parse_md_file(
             palette=palette,
             chapter_anchor=chapter_anchor,
             link_resolver=link_resolver,
+            math_mode=math_mode,
         )
     )
 
@@ -570,6 +625,7 @@ def parse_md_file(
             palette=palette,
             chapter_anchor=chapter_anchor,
             link_resolver=link_resolver,
+            math_mode=math_mode,
         )
         if sb_flowables:
             flowables.append(Spacer(1, 10))
@@ -606,7 +662,7 @@ def parse_md_file(
         for idx, item in enumerate(items, 1):
             flowables.append(
                 Paragraph(
-                    f"{idx}.  {fmt(item, link_resolver=link_resolver)}",
+                    f"{idx}.  {fmt(item, link_resolver=link_resolver, math_mode=math_mode)}",
                     styles["fr_item"],
                 )
             )

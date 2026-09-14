@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from reportlab.platypus import Paragraph
 
 from fes_pdf_builder.markdown import (
     MarkdownConfig,
@@ -239,3 +240,71 @@ def test_parse_section_lines_markdown_table() -> None:
     ]
     flowables = parse_section_lines(lines, styles)
     assert any(f.__class__.__name__ == "Table" for f in flowables)
+
+
+def test_parse_section_lines_latex_mode_dollar_display_block() -> None:
+    styles = make_styles()
+    lines = ["$$", "a^2 + b^2 = c^2", "$$", "Regular paragraph."]
+    seen: list[str] = []
+
+    def math_renderer(text: str, _styles: dict) -> object:
+        seen.append(text)
+        return Paragraph(text, styles["body"])
+
+    flowables = parse_section_lines(lines, styles, math_renderer=math_renderer, math_mode="latex")
+    assert seen == ["a^2 + b^2 = c^2"]
+    assert any(f.__class__.__name__ == "Paragraph" for f in flowables)
+
+
+def test_parse_section_lines_latex_mode_single_line_display() -> None:
+    styles = make_styles()
+    lines = ["$$x = y$$", "Prose after."]
+    seen: list[str] = []
+
+    def math_renderer(text: str, _styles: dict) -> object:
+        seen.append(text)
+        return Paragraph(text, styles["body"])
+
+    parse_section_lines(lines, styles, math_renderer=math_renderer, math_mode="latex")
+    assert seen == ["x = y"]
+
+
+def test_parse_section_lines_latex_mode_bracket_block_captures_trailing() -> None:
+    styles = make_styles()
+    lines = [r"\[ \frac{a}{b} = c \]", "Prose after."]
+    seen: list[str] = []
+
+    def math_renderer(text: str, _styles: dict) -> object:
+        seen.append(text)
+        return Paragraph(text, styles["body"])
+
+    parse_section_lines(lines, styles, math_renderer=math_renderer, math_mode="latex")
+    assert seen == [r"\frac{a}{b} = c"]
+
+
+def test_parse_section_lines_legacy_mode_ignores_dollar_blocks() -> None:
+    styles = make_styles()
+    lines = ["$$", "a^2 + b^2 = c^2", "$$"]
+    seen: list[str] = []
+
+    def math_renderer(text: str, _styles: dict) -> object:
+        seen.append(text)
+        return Paragraph(text, styles["body"])
+
+    parse_section_lines(lines, styles, math_renderer=math_renderer)
+    assert seen == []
+
+
+def test_parse_section_lines_latex_mode_math_in_sidebar_suppressed() -> None:
+    styles = make_styles()
+    lines = ["$$", "a + b", "$$"]
+    seen: list[str] = []
+
+    def math_renderer(text: str, _styles: dict) -> object:
+        seen.append(text)
+        return Paragraph(text, styles["body"])
+
+    parse_section_lines(
+        lines, styles, math_renderer=math_renderer, math_mode="latex", is_sidebar=True
+    )
+    assert seen == []

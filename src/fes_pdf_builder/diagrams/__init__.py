@@ -14,7 +14,7 @@
 
 """Optional diagram + math renderers.
 
-Three opt-in renderers live here:
+Four opt-in renderers live here:
 
 * :mod:`reporting.diagrams.mermaid` — renders Mermaid ``flowchart`` /
   ``graph`` blocks via GraphViz. Requires the ``dot`` binary on PATH at
@@ -27,11 +27,20 @@ Three opt-in renderers live here:
 * :mod:`reporting.diagrams.math` — renders LaTeX math via matplotlib's
   mathtext engine; falls back to :func:`reporting.text.clean_latex` plain
   text when matplotlib can't parse the expression.
+* :mod:`reporting.diagrams.math_latex` — high-fidelity LaTeX math
+  (``[math]`` extra): display equations as ziamath vector drawings with
+  matplotlib-PNG and plain-text fallbacks, plus inline ``<img>`` rendering.
 """
 
 from __future__ import annotations
 
 from .math import make_math_block, render_latex_png
+from .math_latex import (
+    make_inline_math_img,
+    make_math_block_latex,
+    render_inline_math_png,
+    render_latex_drawing,
+)
 from .mermaid import (
     has_graphviz,
     make_diagram_box,
@@ -43,9 +52,13 @@ from .sequence import parse_sequence, render_sequence_png
 __all__ = [
     "has_graphviz",
     "make_diagram_box",
+    "make_inline_math_img",
     "make_math_block",
+    "make_math_block_latex",
     "mermaid_to_dot",
     "parse_sequence",
+    "render_inline_math_png",
+    "render_latex_drawing",
     "render_latex_png",
     "render_mermaid_png",
     "render_sequence_png",

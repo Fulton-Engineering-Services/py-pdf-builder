@@ -22,6 +22,9 @@ pip install "fes-pdf-builder[charts] @ git+https://github.com/Fulton-Engineering
 # With diagram support
 pip install "fes-pdf-builder[diagrams] @ git+https://github.com/Fulton-Engineering-Services/py-pdf-builder@v0.1.0"
 
+# With high-fidelity LaTeX math (ziamath vector equations)
+pip install "fes-pdf-builder[math] @ git+https://github.com/Fulton-Engineering-Services/py-pdf-builder@v0.1.0"
+
 # Everything
 pip install "fes-pdf-builder[all] @ git+https://github.com/Fulton-Engineering-Services/py-pdf-builder@v0.1.0"
 ```
@@ -116,6 +119,18 @@ build_single_markdown_pdf(
 
 Each `## Heading` in the markdown file becomes its own chapter, complete with running header, TOC link, and PDF outline entry.
 
+### LaTeX math mode
+
+By default, `\[...\]` display blocks render via matplotlib mathtext and
+`\(...\)` inline spans are approximated with Unicode glyphs. Pass
+`math_mode="latex"` to enable high-fidelity math (requires the `[math]`
+extra):
+
+- Display equations render as **vector graphics** (ziamath → svglib), crisp at any zoom.
+- Inline math accepts `$...$`, `$$...$$` and `\(...\)`, rendered as small images that flow inside paragraphs.
+- Currency prose like "costs $5 and $10" stays prose (Pandoc-style delimiter heuristics), and `$` inside backtick code or fenced code blocks is never treated as a delimiter.
+- Every formula degrades gracefully: vector → mathtext PNG → plain text; a bad formula never aborts the build.
+
 ---
 
 ## API Overview
@@ -134,6 +149,7 @@ Each `## Heading` in the markdown file becomes its own chapter, complete with ru
 | `fes_pdf_builder.diagrams.mermaid` | `make_diagram_box()`, `has_graphviz()` |
 | `fes_pdf_builder.diagrams.sequence` | `parse_sequence()`, `render_sequence_png()` |
 | `fes_pdf_builder.diagrams.math` | `make_math_block()`, `render_latex_png()` |
+| `fes_pdf_builder.diagrams.math_latex` | `make_math_block_latex()`, `render_latex_drawing()`, `render_inline_math_png()`, `make_inline_math_img()` |
 | `fes_pdf_builder.reports.base` | `build_doc()`, `ReportContext`, `cover_pages()`, `part_divider()`, `concept_overview()` |
 | `fes_pdf_builder.reports.single_markdown` | `build_single_markdown_pdf()`, `SingleMdConfig` |
 
