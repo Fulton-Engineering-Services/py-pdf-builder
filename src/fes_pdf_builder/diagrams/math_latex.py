@@ -24,10 +24,10 @@ pipeline degrades gracefully: matplotlib mathtext PNG (see
 formula never aborts a build.
 
 Inline equations (``$...$`` / ``\\(...\\)`` spans inside a paragraph) are
-rendered as small transparent PNGs via matplotlib mathtext, cropped to the
-expression's ink and embedded as base64 data-URI ``<img>`` tags with a
-numeric ``valign`` that baseline-aligns each formula with the surrounding
-text.
+rendered as small transparent PNGs via matplotlib mathtext and embedded as
+base64 data-URI ``<img>`` tags. The image is the mathtext layout box with
+the baseline recorded, so ReportLab aligns each formula with the
+surrounding text via a numeric ``valign``.
 
 Requires the ``[math]`` extra (``pip install fes-pdf-builder[math]``) for
 the vector path; the matplotlib PNG path needs the ``[charts]``/``[diagrams]``
@@ -137,12 +137,13 @@ def render_inline_math_png(
     fontsize: int = 10,
     dpi: int = 300,
 ) -> tuple[bytes, float, float, float] | None:
-    """Render an inline LaTeX span as a tight transparent PNG (matplotlib).
+    """Render an inline LaTeX span as a transparent PNG on its own baseline.
 
-    The image is cropped to the expression's ink (plus a 0.72 pt pad), so
-    its width tracks the content instead of being a fixed-width rectangle,
-    and it sits on the text baseline when the caller passes the returned
-    descent to ReportLab as a numeric ``valign``.
+    The image is built to the mathtext layout box (baseline at ``depth``
+    from the bottom), NOT cropped with ``bbox_inches="tight"``. Tight
+    cropping follows the *text layout box*, which carries the font's
+    descent metric below the ink — that phantom whitespace made formulas
+    float above the surrounding text baseline.
 
     Args:
         latex_text: LaTeX math source; ``$...$``, ``\\(...\\)`` and
@@ -154,7 +155,7 @@ def render_inline_math_png(
         ``(png_bytes, width_pts, height_pts, descent_pts)`` on success, or
         ``None`` when matplotlib is unavailable or cannot parse the
         expression. ``descent_pts`` is the distance from the bottom of the
-        image to the math baseline (including the padding).
+        image to the math baseline.
     """
     raw = latex_text.strip()
     raw = re.sub(r"^\\\[|\\\]$", "", raw).strip()
@@ -169,44 +170,37 @@ def render_inline_math_png(
         import matplotlib
 
         matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
         from matplotlib import mathtext
+        from matplotlib.figure import Figure
         from matplotlib.font_manager import FontProperties
     except Exception:
         return None
 
     try:
         prop = FontProperties(size=fontsize)
-        # Parse at 72 dpi so the reported metrics are already in points;
-        # ``depth`` is the ink descent below the baseline.
-        _w, _h, depth_pts, _glyphs, _rects = mathtext.MathTextParser("path").parse(
-            expr, dpi=72, prop=prop
+        # Parse at 4x72 dpi and scale to points for sub-point depth
+        # precision (a dpi=72 parse quantises depth to whole points).
+        metric_dpi = 288
+        to_pts = 72.0 / metric_dpi
+        width, height, depth, _glyphs, _rects = mathtext.MathTextParser("path").parse(
+            expr, dpi=metric_dpi, prop=prop
         )
+        width *= to_pts
+        height *= to_pts
+        depth *= to_pts
+        if width <= 0 or height <= 0:
+            return None
 
-        # Figure-level text artist (no axes) so ``bbox_inches="tight"``
-        # crops to the glyphs rather than to a fixed-width axes rectangle.
-        fig = plt.figure(figsize=(0.5, 0.5))
+        # Figure sized exactly to the layout box; the baseline sits
+        # ``depth`` above the canvas bottom, so image-bottom-to-baseline is
+        # exactly ``depth`` and ReportLab can align it with a numeric
+        # valign of ``-depth``.
+        fig = Figure(figsize=(width / 72.0, height / 72.0))
         fig.patch.set_alpha(0)
-        fig.text(
-            0.0,
-            0.0,
-            expr,
-            fontproperties=prop,
-            color="#0F172A",
-            ha="left",
-            va="bottom",
-        )
-        pad_in = 0.01
+        fig.text(0, depth / height, expr, fontproperties=prop, color="#0F172A")
+
         buf = BytesIO()
-        fig.savefig(
-            buf,
-            format="png",
-            dpi=dpi,
-            bbox_inches="tight",
-            pad_inches=pad_in,
-            transparent=True,
-        )
-        plt.close(fig)
+        fig.savefig(buf, format="png", dpi=dpi, transparent=True)
         buf.seek(0)
 
         ir = ImageReader(buf)
@@ -214,8 +208,7 @@ def render_inline_math_png(
         w_pts = w_px * 72.0 / dpi
         h_pts = h_px * 72.0 / dpi
         buf.seek(0)
-        descent_pts = depth_pts + pad_in * 72.0
-        return buf.getvalue(), w_pts, h_pts, descent_pts
+        return buf.getvalue(), w_pts, h_pts, depth
 
     except Exception:
         try:
