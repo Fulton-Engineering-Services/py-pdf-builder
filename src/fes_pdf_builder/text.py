@@ -21,7 +21,9 @@ Public functions:
 * :func:`fmt` — apply inline-markdown formatting (``**bold**``, ``_italic_``,
   ``` `code` ```, ``\\(math\\)`` placeholders, link-text extraction) and
   return a ReportLab-safe XML string.  Accepts an optional ``link_color``
-  override (default: FES brand blue ``#2563EB``).
+  override (default: FES brand blue ``#2563EB``) and an optional
+  ``math_mode`` (``"legacy"`` — Unicode-approximated ``\\(...\\)`` spans;
+  ``"latex"`` — ``$...$`` / ``\\(...\\)`` spans rendered as images).
 * :func:`safe_para` — :class:`Paragraph` constructor with a graceful
   fallback when the XML parser rejects markup we couldn't predict.
 * :func:`clean_latex` — collapse a LaTeX expression to readable plain text
@@ -45,6 +47,25 @@ __all__ = ["clean_latex", "esc", "fmt", "format_inline_math", "safe_para"]
 # palette dependency unless an override is explicitly passed.
 _DEFAULT_LINK_COLOR = "#2563EB"
 
+# Inline-math span regexes used by :func:`fmt`. ``\\(...\\)`` is extracted
+# first so a ``$`` inside a math span is never treated as a delimiter. The
+# dollar regex mirrors common markdown-math heuristics (Pandoc rules): the
+# opening ``$`` must not be followed by whitespace and the closing ``$``
+# must not be preceded by whitespace, so prose like "costs $5 and $10"
+# stays prose.
+_MATH_PAREN_RE = re.compile(r"\\\(.+?\\\)", re.DOTALL)
+_MATH_DOLLAR_RE = re.compile(r"\$\$[^\$\n]+\$\$|\$[^\s$][^$\n]*?(?<!\s)\$")
+
+
+def _strip_math_delims(raw: str) -> str:
+    """Strip ``$...$``, ``\\(...\\)`` and ``\\[...\\]`` wrappers from a span."""
+    inner = raw.strip()
+    inner = re.sub(r"^\\\[|\\\]$", "", inner)
+    inner = re.sub(r"^\\\(|\\\)$", "", inner)
+    inner = re.sub(r"^\$\$|\$\$$", "", inner)
+    inner = re.sub(r"^\$|\$$", "", inner)
+    return inner.strip()
+
 
 def esc(text: str) -> str:
     """XML-escape ``&``, ``<``, ``>``."""
@@ -56,17 +77,30 @@ def fmt(
     *,
     link_resolver: Callable[[str], str | None] | None = None,
     link_color: str | None = None,
+    math_mode: str = "legacy",
 ) -> str:
     """Apply inline markdown formatting and return ReportLab-safe XML markup.
 
     Processing order:
-      0. Extract ``\\(...\\)`` inline math spans BEFORE XML-escaping so LaTeX
-         backslashes/braces never reach the XML layer.
-      0b. Extract bare ``<https://...>`` URLs BEFORE XML-escaping so the
+
+      0. Math spans. In ``"legacy"`` mode only ``\\(...\\)`` is recognised
+         and converted to Unicode-approximated ``<sub>``/``<super>`` XML
+         via :func:`format_inline_math`. In ``"latex"`` mode ``$...$``,
+         ``$$...$$`` and ``\\(...\\)`` are all extracted first and
+         rendered as inline images (base64 data-URI ``<img>`` tags) via
+         :func:`fes_pdf_builder.diagrams.math_latex.make_inline_math_img`,
+         falling back to the legacy approximation per span when a formula
+         can't be rendered.
+      0b. In ``"latex"`` mode, backtick code spans are protected BEFORE
+         math extraction so ``$`` inside code is never treated as a math
+         delimiter. In ``"legacy"`` mode code spans are extracted after
+         escaping (pre-existing behaviour).
+      0c. Extract bare ``<https://...>`` URLs BEFORE XML-escaping so the
           angle brackets survive (otherwise ``esc`` rewrites them to
           ``&lt;``/``&gt;`` and the bare-URL regex never matches).
       1. XML-escape the remaining text.
-      2. Protect backtick code spans with placeholders.
+      2. Protect backtick code spans with placeholders (legacy mode only;
+         latex mode did this in step 0b).
       3. Apply bold / bold-italic / italic markdown rules.
       4. Convert ``[text](url)`` markdown links to styled, clickable
          ``<a href="url">…</a>`` anchors. The display text already carries
@@ -87,16 +121,52 @@ def fmt(
             schemes are all delivered verbatim.
         link_color: Hex colour string for hyperlinks (e.g. ``"#2563EB"``).
             Defaults to the FES brand blue.
+        math_mode: ``"legacy"`` (default) or ``"latex"``. Legacy keeps the
+            historical Unicode-approximation behaviour exactly; latex
+            enables ``$...$``/``$$...$$``/``\\(...\\)`` spans rendered as
+            inline images with per-span fallback.
     """
     _link_color = link_color or _DEFAULT_LINK_COLOR
+    latex_mode = math_mode == "latex"
     _math_spans: list[str] = []
+    _code_spans: list[str] = []
 
-    def _save_math(m: re.Match[str]) -> str:
-        idx = len(_math_spans)
-        _math_spans.append(format_inline_math(m.group(0)))
-        return f"\x00M{idx}\x00"
+    def _save_code(m: re.Match[str]) -> str:
+        idx = len(_code_spans)
+        _code_spans.append(f'<font name="Courier">{m.group(1)}</font>')
+        return f"\x00C{idx}\x00"
 
-    text = re.sub(r"\\\(.+?\\\)", _save_math, text, flags=re.DOTALL)
+    if latex_mode:
+        # Protect code spans BEFORE escaping (code content must be escaped
+        # manually here) so `$`/`\(` inside backticks never reach the math
+        # extraction below.
+        def _save_code_early(m: re.Match[str]) -> str:
+            idx = len(_code_spans)
+            _code_spans.append(f'<font name="Courier">{esc(m.group(1))}</font>')
+            return f"\x00C{idx}\x00"
+
+        text = re.sub(r"`([^`]+?)`", _save_code_early, text)
+
+    if latex_mode:
+        from .diagrams.math_latex import make_inline_math_img
+
+        def _save_math(m: re.Match[str]) -> str:
+            idx = len(_math_spans)
+            raw = m.group(0)
+            tag = make_inline_math_img(_strip_math_delims(raw))
+            _math_spans.append(tag if tag is not None else format_inline_math(raw))
+            return f"\x00M{idx}\x00"
+
+    else:
+
+        def _save_math(m: re.Match[str]) -> str:
+            idx = len(_math_spans)
+            _math_spans.append(format_inline_math(m.group(0)))
+            return f"\x00M{idx}\x00"
+
+    text = _MATH_PAREN_RE.sub(_save_math, text)
+    if latex_mode:
+        text = _MATH_DOLLAR_RE.sub(_save_math, text)
 
     # 0b. Extract bare-URL form ``<https://...>`` BEFORE escaping. The
     # angle brackets must be literal ``<`` ``>`` for the regex to match;
@@ -112,14 +182,8 @@ def fmt(
 
     text = esc(text)
 
-    _code_spans: list[str] = []
-
-    def _save_code(m: re.Match[str]) -> str:
-        idx = len(_code_spans)
-        _code_spans.append(f'<font name="Courier">{m.group(1)}</font>')
-        return f"\x00C{idx}\x00"
-
-    text = re.sub(r"`([^`]+?)`", _save_code, text)
+    if not latex_mode:
+        text = re.sub(r"`([^`]+?)`", _save_code, text)
 
     text = re.sub(r"\*\*\*(.+?)\*\*\*", r"<b><i>\1</i></b>", text)
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)

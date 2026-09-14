@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import base64
+import sys
 from io import BytesIO
 from pathlib import Path
 
@@ -309,7 +310,13 @@ def test_make_image_accepts_path(tmp_path: Path) -> None:
     assert img._height == pytest.approx(60.0)
 
 
-def test_make_image_svg_without_svglib_raises_helpful_error(tmp_path: Path) -> None:
+def test_make_image_svg_without_svglib_raises_helpful_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # svglib is part of the dev dependency group; simulate its absence so
+    # the "install svglib" error path is exercised regardless.
+    monkeypatch.setitem(sys.modules, "svglib", None)
+    monkeypatch.setitem(sys.modules, "svglib.svglib", None)
     svg = tmp_path / "plot.svg"
     svg.write_text(
         "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='100'>"
