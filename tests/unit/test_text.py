@@ -139,7 +139,7 @@ def test_fmt_latex_mode_renders_dollar_math_as_image() -> None:
     pytest.importorskip("matplotlib")
     out = fmt(r"variance scales as $\hat{c}^{2}$ per month.", math_mode="latex")
     assert "data:image/png;base64," in out
-    assert 'valign="middle"' in out
+    assert 'valign="-' in out
 
 
 def test_fmt_latex_mode_keeps_money_prose() -> None:
