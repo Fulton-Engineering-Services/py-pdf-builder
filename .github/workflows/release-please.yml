@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-latest
+    runs-on: arc-fes
+    timeout-minutes: 15
     steps:
       - uses: actions/create-github-app-token@v1
         id: app-token
