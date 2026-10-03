@@ -9,7 +9,8 @@ on:
 jobs:
   test:
     name: "Python ${{ matrix.python-version }}"
-    runs-on: ubuntu-latest
+    runs-on: arc-fes
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
