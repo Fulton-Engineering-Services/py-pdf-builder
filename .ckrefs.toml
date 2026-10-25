@@ -1,0 +1,5 @@
+[[refs]]
+type = "self"
+repo = "py-pdf-builder"
+ref = "main"
+description = "Branded PDF report toolkit (fes-pdf-builder), ReportLab + matplotlib chassis."
