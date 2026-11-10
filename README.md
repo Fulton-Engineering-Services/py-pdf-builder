@@ -2,7 +2,8 @@
 
 An open-source PDF report toolkit (Apache 2.0) from Fulton Engineering Services LLC.
 
-Provides a complete **ReportLab + matplotlib chassis** for building branded PDF deliverables from Python scripts: palette, styles, flowables, page templates, a markdown → flowable parser, chart helpers, and optional Mermaid / math diagram renderers.
+Provides a complete **ReportLab + matplotlib chassis** for building branded PDF deliverables from Python scripts: palette, styles,
+flowables, page templates, a markdown → flowable parser, chart helpers, and optional Mermaid / math diagram renderers.
 
 ---
 
