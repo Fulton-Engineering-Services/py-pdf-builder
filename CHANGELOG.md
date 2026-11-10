@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.0](https://github.com/Fulton-Engineering-Services/py-pdf-builder/compare/v0.3.0...v0.4.0) (2026-11-10)
+
+
+### Features
+
+* add .ckrefs.toml codekeeper index references ([723bb9a](https://github.com/Fulton-Engineering-Services/py-pdf-builder/commit/723bb9af8a5c8d23748be81019ae7feb49af2c40))
+
 ## [0.3.0](https://github.com/Fulton-Engineering-Services/py-pdf-builder/compare/v0.2.0...v0.3.0) (2026-09-14)
 
 
